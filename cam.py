@@ -59,6 +59,8 @@ def draw_rectangle(frame, coordinates):
 def main():
     alpr = initialize_alpr()
     video_path = r"imagens/ALPR_Test.mp4"
+    #passando link da camera do esp32cam no local host para capturar video e fazer a leitura da placa em tempo real
+    #video_path = "http://localhost:81/stream"
     cap = open_video_stream(video_path)
 
     while True:
