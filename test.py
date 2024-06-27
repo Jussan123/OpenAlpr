@@ -1,13 +1,11 @@
-import cv2  # Importa a biblioteca OpenCV
-import os  # Importa a biblioteca os
-import sys  # Importa a biblioteca sys
-from openalpr import Alpr  # Importa a classe Alpr da biblioteca openalpr
-import requests  # Importa a biblioteca requests
-from collections import Counter  # Importa a classe Counter da biblioteca collections
-import logging  # Importa a biblioteca logging
-import time  # Importa a biblioteca time
-import numpy as np  # Importa a biblioteca numpy
-from urllib.request import urlopen
+import cv2
+import os
+import sys
+from openalpr import Alpr
+import requests
+from collections import Counter
+import logging
+import time
 
 # Configuração do logging
 logging.basicConfig(filename='alpr_errors.log', level=logging.ERROR,
@@ -32,13 +30,12 @@ def open_video_stream(video_path, max_attempts=5):
     while attempts < max_attempts:
         cap = cv2.VideoCapture(video_path)
         if cap.isOpened():
-            logging.info("Stream de vídeo aberto com sucesso")
             return cap
         attempts += 1
         logging.error(f"Falha ao abrir o stream de vídeo, tentativa {attempts}")
         time.sleep(2)  # Espera 2 segundos antes de tentar novamente
     logging.error("Falha ao abrir o stream de vídeo após várias tentativas")
-    return None
+    sys.exit(1)
 
 def save_image(plate, frame):
     output_dir = 'c:\\temp'
@@ -80,8 +77,8 @@ def is_valid_plate(plate):
     return True
 
 def send_to_api(plate, camera_id):
-    email = "jussan@meu3email.com"
-    password = "jussan123"
+    email = "admin@email.com"
+    password = "admin@123"
     try:
         loginApi = requests.post("https://apicondsecurity.azurewebsites.net/api/Usuario/LoginApp", json={"email": email, "senha": password})
         if loginApi.status_code != 200:
@@ -117,17 +114,9 @@ def send_to_api(plate, camera_id):
 
 def main():
     alpr = initialize_alpr()
-    #video_path = "http://10.10.135.53:80"  # Assumindo que esta é a URL correta do seu stream
     video_path = r"imagens/ALPR_Test.mp4"
-    print("Abrindo stream de vídeo...", video_path)
+    #video_path = "http://192.168.1.13:80"  # Substitua pela URL correta da sua câmera IP
     cap = open_video_stream(video_path)
-    print("Stream aberto:", cap.isOpened())
-    
-    if not cap:
-        logging.error("Não foi possível abrir o stream de vídeo")
-        return
-
-    print("Stream aberto:", cap.isOpened())
 
     plate_counter = Counter()
     last_processed_time = {}
@@ -136,20 +125,14 @@ def main():
 
     while True:
         ret, frame = cap.read()
-        if not ret or frame is None or frame.size == 0:
-            logging.error("Erro ao ler o frame do vídeo ou frame vazio. Tentando reconectar...")
-            cap.release()
-            cap = open_video_stream(video_path)
-            if not cap:
-                logging.error("Falha ao reconectar ao stream de vídeo")
-                break
-            continue
+        if not ret or frame is None:
+            logging.error("Erro ao ler o frame do vídeo")
+            break
 
-        # Exibir o frame capturado
         cv2.imshow('frame', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
+        
         result, img_encoded = cv2.imencode('.jpg', frame)
         if not result:
             logging.error("Erro ao codificar o frame em JPEG")
@@ -173,10 +156,10 @@ def main():
                 most_common_plate = plate_counter.most_common(1)[0][0]
                 current_time = time.time()
                 if most_common_plate not in last_processed_time or current_time - last_processed_time[most_common_plate] > min_interval:
+                    save_image(most_common_plate, frame)
                     print(f"Placa mais comum: {most_common_plate}")
                     send_to_api(most_common_plate, camera_id)
                     print(f"Placa {most_common_plate} enviada para a API")
-                    save_image(most_common_plate, frame)
                     last_processed_time[most_common_plate] = current_time
             else:
                 logging.info("Nenhuma placa válida encontrada até agora.")
@@ -185,8 +168,6 @@ def main():
 
         if cv2.waitKey(1) == 27:
             break
-
-        time.sleep(0.1)  # Adicione um pequeno atraso para reduzir a carga no stream
 
     cap.release()
     cv2.destroyAllWindows()
