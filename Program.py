@@ -1,19 +1,17 @@
-import cv2  # Importa a biblioteca OpenCV
-import os  # Importa a biblioteca os
-import sys  # Importa a biblioteca sys
-from openalpr import Alpr  # Importa a classe Alpr da biblioteca openalpr
-import requests  # Importa a biblioteca requests
-from collections import Counter  # Importa a classe Counter da biblioteca collections
-import logging  # Importa a biblioteca logging
-import time  # Importa a biblioteca time
-import numpy as np  # Importa a biblioteca numpy
+import cv2
+import os
+import sys
+from openalpr import Alpr
+import requests
+from collections import Counter
+import logging
+import time
+import numpy as np
 from urllib.request import urlopen
 
-# Configuração do logging
 logging.basicConfig(filename='alpr_errors.log', level=logging.ERROR,
                     format='%(asctime)s %(levelname)s %(message)s')
 
-# Adicione o diretório da DLL ao caminho de pesquisa
 dll_path = r'C:\openalpr_64'
 os.environ['PATH'] = dll_path + ';' + os.environ['PATH']
 
@@ -36,7 +34,7 @@ def open_video_stream(video_path, max_attempts=5):
             return cap
         attempts += 1
         logging.error(f"Falha ao abrir o stream de vídeo, tentativa {attempts}")
-        time.sleep(2)  # Espera 2 segundos antes de tentar novamente
+        time.sleep(2)
     logging.error("Falha ao abrir o stream de vídeo após várias tentativas")
     return None
 
@@ -117,37 +115,24 @@ def send_to_api(plate, camera_id):
 
 def main():
     alpr = initialize_alpr()
-    #video_path = "http://10.10.135.53:80"  # Assumindo que esta é a URL correta do seu stream
-    video_path = r"imagens/ALPR_Test.mp4"
-    print("Abrindo stream de vídeo...", video_path)
-    cap = open_video_stream(video_path)
-    print("Stream aberto:", cap.isOpened())
-    
-    if not cap:
-        logging.error("Não foi possível abrir o stream de vídeo")
-        return
-
-    print("Stream aberto:", cap.isOpened())
-
+    #video_path = r'http://192.168.1.10:80/cam-hi.jpg'
+    video_path = r'http://10.10.133.194:80/cam-hi.jpg'
     plate_counter = Counter()
     last_processed_time = {}
     camera_id = "1"
     min_interval = 60
+    confidence_threshold = 70  # Adicionando um limite de confiança
 
     while True:
-        ret, frame = cap.read()
-        if not ret or frame is None or frame.size == 0:
+        img_resp = urlopen(video_path)
+        imgnp = np.asarray(bytearray(img_resp.read()), dtype="uint8")
+        frame = cv2.imdecode(imgnp, -1)
+        if frame is None or frame.size == 0:
             logging.error("Erro ao ler o frame do vídeo ou frame vazio. Tentando reconectar...")
-            cap.release()
-            cap = open_video_stream(video_path)
-            if not cap:
-                logging.error("Falha ao reconectar ao stream de vídeo")
-                break
             continue
 
-        # Exibir o frame capturado
         cv2.imshow('frame', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(50) & 0xFF == ord('q'):
             break
 
         result, img_encoded = cv2.imencode('.jpg', frame)
@@ -163,7 +148,7 @@ def main():
                 for candidate in plate['candidates']:
                     plate_text = candidate['plate']
                     confidence = candidate['confidence']
-                    if is_valid_plate(plate_text):
+                    if confidence >= confidence_threshold and is_valid_plate(plate_text):  # Adicionando filtro de confiança
                         plate_counter[plate_text] += 1
                         print(f"Placa: {plate_text} Confiança: {confidence}")
                 
@@ -186,7 +171,7 @@ def main():
         if cv2.waitKey(1) == 27:
             break
 
-        time.sleep(0.1)  # Adicione um pequeno atraso para reduzir a carga no stream
+        time.sleep(0.1)
 
     cap.release()
     cv2.destroyAllWindows()
